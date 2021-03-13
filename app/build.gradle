@@ -124,13 +124,39 @@ def generateVersionName = { ->
         return "NoGitSystemAvailable"
     }
     stringBuilder.append('-')
-    stringBuilder.append((new Date()).format('yyyy.MM.dd'))
+    stringBuilder.append((new Date()).format('yy.MMdd.HHmmss'))
     return stringBuilder.toString()
 
 }
 
+Properties signProps = null
+def signPropFile = file('../signing.properties')
+if (signPropFile.canRead()) {
+    println("loading signingConfigs properties from signing.properties")
+    signProps = new Properties()
+    signProps.load(new FileInputStream(signPropFile))
+}
+
 android {
     compileSdkVersion 29
+
+    signingConfigs {
+        if (signProps != null) {
+            release {
+                storeFile file(signProps.STORE_FILE)
+                storePassword signProps.STORE_PASSWORD
+                keyAlias = signProps.KEY_ALIAS
+                keyPassword signProps.KEY_PASSWORD
+            }
+
+            debug {
+                storeFile file(signProps.STORE_FILE)
+                storePassword signProps.STORE_PASSWORD
+                keyAlias = signProps.KEY_ALIAS
+                keyPassword signProps.KEY_PASSWORD
+            }
+        }
+    }
 
     dexOptions {
         javaMaxHeapSize "3g"
@@ -205,6 +231,9 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'),
                     'proguard-rules.pro'
+            if (signProps != null) {
+                signingConfig signingConfigs.release
+            }
         }
         debug {
             minifyEnabled true
@@ -253,6 +282,18 @@ android {
             // your app, you can leave this block empty and Gradle uses configurations in
             // the defaultConfig block instead. You still need to create this flavor.
             // Otherwise, all variants use the "dev" flavor configurations.
+        }
+
+        custom {
+            minSdkVersion 21
+            versionNameSuffix "-cust"
+            matchingFallbacks = ['prod', 'fast']
+
+            // create local.properties with properties to override build config
+            def propsFile = project.rootProject.file("local.properties")
+            def properties = new Properties()
+            properties.load(propsFile.newDataInputStream())
+            buildConfigField "String", "XDRIP_UPDATER_URL", System.getenv('XDRIP_UPDATER_URL') ?: "\"" + properties.getProperty("XDRIP_UPDATER_URL", "") + "\""
         }
     }
 
@@ -383,9 +424,14 @@ dependencies {
     // use lombok in unit tests
     testCompileOnly 'org.projectlombok:lombok:1.18.10'
     testAnnotationProcessor 'org.projectlombok:lombok:1.18.10'
+
+    // used only in special flavour with custom updater
+    customImplementation 'com.github.k2s:AppUpdater:d08208ce3b', {
+        exclude group: 'com.android.support'
+    }
 }
 
-tasks.withType(Test) { 
+tasks.withType(Test) {
   testLogging {
     exceptionFormat "full"
     events "started", "skipped", "passed", "failed"

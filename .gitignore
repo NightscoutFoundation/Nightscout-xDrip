@@ -42,6 +42,7 @@ patches/
 
 #local
 /local.properties
+/signing.properties
 .idea/
 /.idea/*
 .idea/misc.xml

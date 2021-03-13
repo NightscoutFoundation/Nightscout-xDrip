@@ -47,6 +47,7 @@ import com.bytehamster.lib.preferencesearch.SearchConfiguration;
 import com.bytehamster.lib.preferencesearch.SearchPreferenceResult;
 import com.bytehamster.lib.preferencesearch.SearchPreferenceResultListener;
 import com.eveningoutpost.dexdrip.BasePreferenceActivity;
+import com.eveningoutpost.dexdrip.BuildConfig;
 import com.eveningoutpost.dexdrip.G5Model.DexSyncKeeper;
 import com.eveningoutpost.dexdrip.G5Model.Ob1G5StateMachine;
 import com.eveningoutpost.dexdrip.GcmActivity;
@@ -910,9 +911,12 @@ public class Preferences extends BasePreferenceActivity implements SearchPrefere
             bindPreferenceSummaryToValue(findPreference("persistent_high_threshold_mins"));
             bindPreferenceSummaryToValue(findPreference("persistent_high_repeat_mins"));
 
-            bindPreferenceTitleAppendToValueUpdateChannel(findPreference("update_channel"));
-
-
+            Preference prefUpdateChannel = findPreference("update_channel");
+            if (BuildConfig.FLAVOR == "custom") {
+                PreferenceScreen updateScreen = (PreferenceScreen) findPreference("xdrip_plus_update_settings");
+                updateScreen.removePreference(prefUpdateChannel);
+            }
+            bindPreferenceTitleAppendToValueUpdateChannel(prefUpdateChannel);
 
             profile_insulin_sensitivity_default = findPreference("profile_insulin_sensitivity_default");
             profile_carb_ratio_default = findPreference("profile_carb_ratio_default");
@@ -1745,8 +1749,10 @@ public class Preferences extends BasePreferenceActivity implements SearchPrefere
 
             if (engineering_mode || this.prefs.getString("update_channel", "").matches("alpha|nightly")) {
                 ListPreference update_channel = (ListPreference) findPreference("update_channel");
-                update_channel.setEntryValues(getResources().getStringArray(R.array.UpdateChannelE));
-                update_channel.setEntries(getResources().getStringArray(R.array.UpdateChannelDetailE));
+                if (update_channel != null) {
+                    update_channel.setEntryValues(getResources().getStringArray(R.array.UpdateChannelE));
+                    update_channel.setEntries(getResources().getStringArray(R.array.UpdateChannelDetailE));
+                }
             }
 
             final DecimalFormat df = new DecimalFormat("#.#");

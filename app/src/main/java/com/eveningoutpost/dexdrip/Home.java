@@ -173,6 +173,7 @@ import static com.eveningoutpost.dexdrip.UtilityModels.ColorCache.getCol;
 import static com.eveningoutpost.dexdrip.UtilityModels.Constants.DAY_IN_MS;
 import static com.eveningoutpost.dexdrip.UtilityModels.Constants.HOUR_IN_MS;
 import static com.eveningoutpost.dexdrip.UtilityModels.Constants.MINUTE_IN_MS;
+import static com.eveningoutpost.dexdrip.UtilityModels.UpdateActivity.AUTO_UPDATE_PREFS_NAME;
 import static com.eveningoutpost.dexdrip.xdrip.gs;
 
 public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPermissionsResultCallback {
@@ -317,6 +318,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     private static String statusIOB = "";
     private static String statusBWP = "";
 
+    private static CustomUpdater customUpdater;
 
     @SuppressLint("ObsoleteSdkInt")
     @Override
@@ -601,6 +603,15 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         }
 
         currentBgValueText.setText(""); // clear any design prototyping default
+
+        if (BuildConfig.FLAVOR == "custom") {
+            // use custom updater in not using mainstream xDrip distribution
+            customUpdater = new CustomUpdater(this);
+            if (PreferenceManager.getDefaultSharedPreferences(this)
+                    .getBoolean(AUTO_UPDATE_PREFS_NAME, true)) {
+                customUpdater.startMonitoring();
+            }
+        }
     }
 
     private boolean firstRunDialogs(final boolean checkedeula) {
@@ -1103,7 +1114,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     }
 
     public void crowdTranslate(MenuItem x) {
-       // startActivity(new Intent(this, LanguageEditor.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        // startActivity(new Intent(this, LanguageEditor.class).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://crowdin.com/project/xdrip")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
@@ -2331,7 +2342,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         }
         if (isWifiWixel || isWifiBluetoothWixel || isWifiandBTLibre || isWifiLibre || collector.equals(DexCollectionType.Mock)) {
             updateCurrentBgInfoForWifiWixel(collector, notificationText);
-        } else if (is_follower || collector.equals(DexCollectionType.NSEmulator) || collector.equals(DexCollectionType.NSFollow) || collector.equals(DexCollectionType.SHFollow) ||collector.equals(DexCollectionType.LibreReceiver)) {
+        } else if (is_follower || collector.equals(DexCollectionType.NSEmulator) || collector.equals(DexCollectionType.NSFollow) || collector.equals(DexCollectionType.SHFollow) || collector.equals(DexCollectionType.LibreReceiver)) {
             displayCurrentInfo();
             Inevitable.task("home-notifications-start", 5000, Notifications::start);
         } else if (!alreadyDisplayedBgInfoCommon && (DexCollectionType.getDexCollectionType() == DexCollectionType.LibreAlarm || collector == DexCollectionType.Medtrum)) {
@@ -3318,8 +3329,13 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     public void checkForUpdate(MenuItem myitem) {
         if (JoH.ratelimit("manual-update-check", 5)) {
             toast(getString(R.string.checking_for_update));
-            UpdateActivity.last_check_time = -1;
-            UpdateActivity.checkForAnUpdate(getApplicationContext());
+            if (BuildConfig.FLAVOR == "custom") {
+                // use custom updater in not using mainstream xDrip distribution
+                customUpdater.manualCheck();
+            } else {
+                UpdateActivity.last_check_time = -1;
+                UpdateActivity.checkForAnUpdate(getApplicationContext());
+            }
         }
     }
 
