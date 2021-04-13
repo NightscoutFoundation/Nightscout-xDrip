@@ -7,7 +7,7 @@ import com.eveningoutpost.dexdrip.Models.JoH;
 import com.eveningoutpost.dexdrip.Models.UserError;
 import com.eveningoutpost.dexdrip.utils.CipherUtils;
 import com.eveningoutpost.dexdrip.watch.miband.Const;
-import com.eveningoutpost.dexdrip.watch.miband.MiBand;
+import com.eveningoutpost.dexdrip.watch.miband.MiBandType;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -34,8 +34,8 @@ public class AuthMessages extends BaseMessage {
     byte[] localKey;
     public ByteBuffer data = null;
 
-    public AuthMessages(MiBand.MiBandType mibandType, String authKey) {
-        if (mibandType == MiBand.MiBandType.MI_BAND4) {
+    public AuthMessages(MiBandType mibandType, String authKey) {
+        if (MiBandType.supportPairingKey(mibandType)) {
             cryptFlags = OperationCodes.AUTH_MIBAND4_CRYPT_FLAG;
         }
         localKey = CipherUtils.getRandomKey();
@@ -64,7 +64,7 @@ public class AuthMessages extends BaseMessage {
         }
     }
 
-    public static Boolean isValidAuthKey(String authKey){
+    public static Boolean isValidAuthKey(String authKey) {
         if ((authKey.length() != 32) || !authKey.matches("[a-zA-Z0-9]+"))
             return false;
         return true;
@@ -104,7 +104,7 @@ public class AuthMessages extends BaseMessage {
         putData(AUTH_SEND_KEY);
         putData(authFlags);
         //if (cryptFlags == 0)
-            putData(localKey);
+        putData(localKey);
         return getBytes();
     }
 
@@ -113,12 +113,13 @@ public class AuthMessages extends BaseMessage {
             init(2);
             putData(AUTH_REQUEST_RANDOM_AUTH_NUMBER);
             putData(authFlags);
-        }
-        else{
-            init(3);
+        } else {
+            init(5);
             putData((byte) (cryptFlags | AUTH_REQUEST_RANDOM_AUTH_NUMBER));
             putData(authFlags);
-            putData((byte)0x02);
+            putData((byte) 0x02);
+            putData((byte) 0x01);
+            putData((byte) 0x00);
         }
         return getBytes();
     }

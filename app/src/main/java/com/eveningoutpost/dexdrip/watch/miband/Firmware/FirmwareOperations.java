@@ -1,7 +1,10 @@
 package com.eveningoutpost.dexdrip.watch.miband.Firmware;
 
 import com.eveningoutpost.dexdrip.Models.JoH;
+import com.eveningoutpost.dexdrip.Models.UserError;
 import com.eveningoutpost.dexdrip.watch.miband.Const;
+import com.eveningoutpost.dexdrip.watch.miband.Firmware.Sequence.SequenceState;
+import com.eveningoutpost.dexdrip.watch.miband.MiBandService;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,15 +14,21 @@ import java.util.UUID;
 import static com.eveningoutpost.dexdrip.watch.miband.message.OperationCodes.COMMAND_FIRMWARE_CHECKSUM;
 import static com.eveningoutpost.dexdrip.watch.miband.message.OperationCodes.COMMAND_FIRMWARE_INIT;
 import static com.eveningoutpost.dexdrip.watch.miband.message.OperationCodes.COMMAND_FIRMWARE_START_DATA;
+import static com.eveningoutpost.dexdrip.watch.miband.message.OperationCodes.COMMAND_FIRMWARE_UNKNOWN_MIBAND5;
 import static com.eveningoutpost.dexdrip.watch.miband.message.OperationCodes.COMMAND_FIRMWARE_UPDATE_SYNC;
 import static com.polidea.rxandroidble2.RxBleConnection.GATT_MTU_MAXIMUM;
 import static com.polidea.rxandroidble2.RxBleConnection.GATT_MTU_MINIMUM;
 import static com.polidea.rxandroidble2.RxBleConnection.GATT_WRITE_MTU_OVERHEAD;
 
 public class FirmwareOperations {
+    protected String TAG = MiBandService.class.getSimpleName();
+
     private byte[] fw;
     private FirmwareType firmwareType = FirmwareType.WATCHFACE;
     private int mMTU = GATT_MTU_MINIMUM;
+    public static int FIRMWARE_SYNC_PACKET = 175;
+
+    protected SequenceState mState;
 
     public enum FirmwareType {
         FIRMWARE((byte) 0),
@@ -44,43 +53,16 @@ public class FirmwareOperations {
         }
     }
 
-    SequenceType sequenceType = SequenceType.NOTIFICATION_ENABLE;
+    public FirmwareOperations(byte[] file, SequenceState sequenceState) {
+        fw = file;
+        mState = sequenceState;
+    }
 
     public void setMTU(int mMTU) {
         this.mMTU = mMTU;
         if (this.mMTU > GATT_MTU_MAXIMUM) this.mMTU = GATT_MTU_MAXIMUM;
         if (this.mMTU < GATT_MTU_MINIMUM) this.mMTU = GATT_MTU_MINIMUM;
     }
-
-    public enum SequenceType {
-        NOTIFICATION_ENABLE,
-        SET_NIGHTMODE,
-        PREPARE_UPLOAD,
-        TRANSFER_SEND_WF_INFO,
-        TRANSFER_FW_START,
-        TRANSFER_FW_DATA,
-        SEND_CHECKSUM,
-        CHECKSUM_VERIFIED;
-
-        private static SequenceType[] vals = values();
-
-        public SequenceType next() {
-            return vals[(this.ordinal() + 1) % vals.length];
-        }
-    }
-
-    public void nextSequence() {
-        sequenceType = sequenceType.next();
-    }
-
-    public void setSequence(SequenceType seq) {
-        sequenceType = seq;
-    }
-
-    public SequenceType getSequence() {
-        return sequenceType;
-    }
-
 
     public FirmwareType getFirmwareType() {
         return firmwareType;
@@ -94,12 +76,15 @@ public class FirmwareOperations {
         return mMTU - GATT_WRITE_MTU_OVERHEAD;
     }
 
-    public FirmwareOperations(InputStream file) throws IOException {
-        fw = readAll(file, 1024 * 2048); // 2.0 MB
+    public String getSequence() {
+        return mState.getSequence();
     }
 
-    public FirmwareOperations(byte[] file) {
-        fw = file;
+    public void nextSequence() {
+        String oldState = mState.getSequence();
+        String new_state = mState.next();
+        if (MiBandService.d)
+            UserError.Log.d(TAG, "Changing firmware state from: " + oldState + " to " + new_state);
     }
 
     public int getSize() {
@@ -134,6 +119,10 @@ public class FirmwareOperations {
         };
     }
 
+    public static int toUint16(byte... bytes) {
+        return (bytes[0] & 0xff) | ((bytes[1] & 0xff) << 8);
+    }
+
     public static byte[] readAll(InputStream in, long maxLen) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(8192, in.available()));
         byte[] buf = new byte[8192];
@@ -149,7 +138,7 @@ public class FirmwareOperations {
         return out.toByteArray();
     }
 
-    public byte[] sendFwInfo() {
+    public byte[] getFwInfoCommand() {
         int fwSize = getSize();
         byte[] sizeBytes = fromUint24(fwSize);
         byte[] bytes = new byte[10];
@@ -173,16 +162,20 @@ public class FirmwareOperations {
         return new byte[]{COMMAND_FIRMWARE_INIT, (byte) 0xFF};
     }
 
-    public byte[] sendChecksum() {
+    public byte[] getChecksumCommand() {
         return new byte[]{COMMAND_FIRMWARE_CHECKSUM};
     }
 
-    public byte[] sendSync() {
+    public byte[] getSyncCommand() {
         return new byte[]{COMMAND_FIRMWARE_UPDATE_SYNC};
     }
 
     public byte[] getFirmwareStartCommand() {
         return new byte[]{COMMAND_FIRMWARE_START_DATA, (byte) 0x1};
+    }
+
+    public byte[] getUnknownMiBand5Command() {
+        return new byte[]{COMMAND_FIRMWARE_UNKNOWN_MIBAND5};
     }
 
     public UUID getFirmwareCharacteristicUUID() {

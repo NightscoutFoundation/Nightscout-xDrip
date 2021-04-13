@@ -98,6 +98,7 @@ import com.eveningoutpost.dexdrip.watch.lefun.LeFunEntry;
 import com.eveningoutpost.dexdrip.watch.miband.MiBand;
 import com.eveningoutpost.dexdrip.watch.miband.MiBandEntry;
 import com.eveningoutpost.dexdrip.watch.miband.MiBandService;
+import com.eveningoutpost.dexdrip.watch.miband.MiBandType;
 import com.eveningoutpost.dexdrip.watch.thinjam.BlueJay;
 import com.eveningoutpost.dexdrip.watch.thinjam.BlueJayAdapter;
 import com.eveningoutpost.dexdrip.watch.thinjam.BlueJayEntry;
@@ -979,7 +980,6 @@ public class Preferences extends BasePreferenceActivity implements SearchPrefere
                 miband2_screen = findPreference("miband2_screen");
                 miband3_4_screen = findPreference("miband3_4_screen");
                 miband_graph_category = findPreference("miband_graph_category");
-                miband_send_readings_as_notification = findPreference(MiBandEntry.PREF_MIBAND_SEND_READINGS_AS_NOTIFICATION);
                 miband_authkey = findPreference(MiBandEntry.PREF_MIBAND_AUTH_KEY);
                 miband_nightmode_category = findPreference("miband_nightmode_category");
                 miband_nightmode_interval = findPreference(MiBandEntry.PREF_MIBAND_NIGHTMODE_INTERVAL);
@@ -989,11 +989,6 @@ public class Preferences extends BasePreferenceActivity implements SearchPrefere
                         PreferenceManager
                                 .getDefaultSharedPreferences(miband_nightmode_interval.getContext())
                                 .getInt(miband_nightmode_interval.getKey(), -1));
-
-                findPreference(MiBandEntry.PREF_CALL_ALERTS).setOnPreferenceChangeListener((preference, newValue) -> {
-                    IncomingCallsReceiver.checkPermission(this.getActivity());
-                    return true;
-                });
 
                 findPreference(MiBandEntry.PREF_MIBAND_ENABLED).setOnPreferenceChangeListener((preference, newValue) -> {
                     if ((Boolean) newValue) {
@@ -2260,29 +2255,32 @@ public class Preferences extends BasePreferenceActivity implements SearchPrefere
         }
 
         private void updateMiBandScreen(){
-            MiBand.MiBandType type = MiBand.getMibandType();
+            MiBandType type = MiBand.getMibandType();
             PreferenceScreen settings = (PreferenceScreen) findPreference(MiBandEntry.PREF_MIBAND_SETTINGS);
             PreferenceScreen prefs = (PreferenceScreen) findPreference(MiBandEntry.PREF_MIBAND_PREFERENCES);
             try {
                 settings.removePreference(miband2_screen);
                 settings.removePreference(miband3_4_screen);
                 settings.removePreference(miband_nightmode_category);
-                prefs.removePreference(miband_graph_category);
-                prefs.removePreference(miband_send_readings_as_notification);
+                settings.removePreference(miband_graph_category);
                 prefs.removePreference(miband_authkey);
 
-                if (type == MiBand.MiBandType.MI_BAND4) {
+                /*if (type == MiBandType.MI_BAND4 || type == MiBandType.MI_BAND5) {
                     settings.addPreference(miband3_4_screen);
-                    settings.addPreference(miband_nightmode_category);
-                    prefs.addPreference(miband_graph_category);
-                    prefs.addPreference(miband_send_readings_as_notification);
-                    prefs.addPreference(miband_authkey);
-                } else if (type == MiBand.MiBandType.MI_BAND2) {
+                } else if (type == MiBandType.MI_BAND2) {
                     settings.addPreference(miband2_screen);
                 }
-                else if (type == MiBand.MiBandType.MI_BAND3 || type == MiBand.MiBandType.MI_BAND3_1){
+                else if (type == MiBandType.MI_BAND3 || type == MiBandType.MI_BAND3_1){
                     settings.addPreference(miband3_4_screen);
+                }*/
+                if (MiBandType.supportGraph(type)) {
+                    settings.addPreference(miband_graph_category);
+                }
+                if (MiBandType.supportNightMode(type)) {
                     settings.addPreference(miband_nightmode_category);
+                }
+                if (MiBandType.supportPairingKey(type)) {
+                    prefs.addPreference(miband_authkey);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Cannot find preference item: " + e);

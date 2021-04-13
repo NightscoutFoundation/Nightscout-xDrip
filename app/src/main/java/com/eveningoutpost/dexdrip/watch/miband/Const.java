@@ -2,6 +2,8 @@ package com.eveningoutpost.dexdrip.watch.miband;
 
 import java.util.UUID;
 
+import static com.polidea.rxandroidble2.RxBleConnection.GATT_WRITE_MTU_OVERHEAD;
+
 public class Const {
 
     public static final String BASE_UUID = "0000%s-0000-1000-8000-00805f9b34fb";
@@ -159,6 +161,10 @@ public class Const {
     public static final String MIBAND_NAME_3 = "MI Band 3";
     public static final String MIBAND_NAME_3_1 = "Xiaomi Band 3";
     public static final String MIBAND_NAME_4 = "Mi Smart Band 4";
+    public static final String MIBAND_NAME_5 = "Mi Smart Band 5";
+    public static final String AMAZFIT5_NAME = "Amazfit Band 5";
+    public static final String AMAZFITGTR_NAME = "Amazfit GTR";
+    public static final String AMAZFITGTR_LITE_NAME = "Amazfit GTR L";
 
     public static final int PREFERRED_MTU_SIZE = 247;
 
@@ -167,4 +173,6 @@ public class Const {
     public static final String MIBAND_NOTIFY_TYPE_CALL = "NOTIFY_TYPE_CALL";
     public static final String MIBAND_NOTIFY_TYPE_MESSAGE = "NOTIFY_TYPE_MESSAGE";
     public static final String MIBAND_NOTIFY_TYPE_ALARM = "NOTIFY_TYPE_ALARM";
+
+    public static final String BG_ALERT_TYPE = "BG_ALERT_TYPE";
 }

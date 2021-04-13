@@ -15,8 +15,6 @@ import com.eveningoutpost.dexdrip.xdrip;
 
 import java.util.Date;
 
-import static com.eveningoutpost.dexdrip.watch.miband.MiBand.MiBandType.MI_BAND2;
-import static com.eveningoutpost.dexdrip.watch.miband.MiBand.MiBandType.MI_BAND4;
 // very lightweight entry point class to avoid loader overhead when not in use
 
 public class MiBandEntry {
@@ -24,10 +22,9 @@ public class MiBandEntry {
     public static final String PREF_MIBAND_MAC = "miband_data_mac";
     public static final String PREF_MIBAND_AUTH_KEY = "miband_data_authkey";
     public static final String PREF_MIBAND_SEND_READINGS = "miband_send_readings";
-    public static final String PREF_MIBAND_SEND_READINGS_AS_NOTIFICATION = "miband_send_readings_as_notification";
     public static final String PREF_VIBRATE_ON_READINGS = "miband_vibrate_on_readings";
     public static final String PREF_SEND_ALARMS = "miband_send_alarms";
-    public static final String PREF_CALL_ALERTS = "miband_option_call_notifications";
+    public static final String PREF_SEND_ALARMS_OTHER = "miband_send_alarms_other";
     public static final String PREF_MIBAND_SETTINGS = "miband_settings";
     public static final String PREF_MIBAND_PREFERENCES = "miband_preferences";
     public static final String PREF_MIBAND_UPDATE_BG = "update_miband_bg";
@@ -41,6 +38,8 @@ public class MiBandEntry {
     public static final String PREF_MIBAND_DISABLE_HIGHT_MTU = "debug_miband_disable_hight_mtu";
     public static final String PREF_MIBAND_USE_CUSTOM_WATHCFACE = "debug_miband_use_custom_watchface";
     public static final String PREF_MIBAND_COLLECT_HEARTRATE = "miband_collect_heartrate";
+    public static final String PREF_MIBAND_COLLECT_STEPS = "miband_collect_steps";
+    public static final String PREF_MIBAND_US_DATE_FORMAT = "miband_us_date_format";
     public static final String PREF_MIBAND_IMAGE_OFFSET = "debug_miband_image_offset";
 
     public static final int NIGHT_MODE_INTERVAL_STEP = 5;
@@ -53,6 +52,10 @@ public class MiBandEntry {
         return isEnabled() && Pref.getBooleanDefaultFalse(PREF_SEND_ALARMS);
     }
 
+    public static boolean areOtherAlertsEnabled() {
+        return isEnabled() && Pref.getBooleanDefaultFalse(PREF_SEND_ALARMS_OTHER);
+    }
+
     public static boolean isVibrateOnReadings() {
         return Pref.getBooleanDefaultFalse(PREF_VIBRATE_ON_READINGS);
     }
@@ -62,16 +65,11 @@ public class MiBandEntry {
     }
 
     public static boolean isNeedSendReadingAsNotification() {
-        if (isEnabled() && MiBand.getMibandType() == MI_BAND2) return true;
-        return isEnabled() && Pref.getBooleanDefaultFalse(PREF_MIBAND_SEND_READINGS_AS_NOTIFICATION);
-    }
-
-    public static boolean areCallAlertsEnabled() {
-        return isEnabled() && Pref.getBooleanDefaultFalse(PREF_CALL_ALERTS);
+        return !MiBandType.supportGraph( MiBand.getMibandType());
     }
 
     public static boolean isNightModeEnabled() {
-        if (MiBand.getMibandType() == MI_BAND2) return false;
+        if (MiBand.getMibandType() == MiBandType.MI_BAND2) return false;
         return Pref.getBooleanDefaultFalse(PREF_MIBAND_NIGHTMODE_ENABLED);
     }
 
@@ -92,7 +90,7 @@ public class MiBandEntry {
     }
 
     public static boolean isGraphEnabled() {
-        if (MiBand.getMibandType() != MI_BAND4) return false;
+        if (!MiBandType.supportGraph(MiBand.getMibandType())) return false;
         return Pref.getBooleanDefaultFalse(PREF_MIBAND_GRAPH_ENBALE);
     }
 
@@ -114,6 +112,14 @@ public class MiBandEntry {
 
     public static boolean isNeedToCollectHR() {
         return Pref.getBooleanDefaultFalse(PREF_MIBAND_COLLECT_HEARTRATE);
+    }
+
+    public static boolean isNeedToCollectSteps() {
+        return Pref.getBooleanDefaultFalse(PREF_MIBAND_COLLECT_STEPS);
+    }
+
+    public static boolean isUS_DateFormat() {
+        return Pref.getBooleanDefaultFalse(PREF_MIBAND_US_DATE_FORMAT);
     }
 
     public static int getImageOffset() {
