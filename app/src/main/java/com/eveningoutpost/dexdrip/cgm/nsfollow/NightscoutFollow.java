@@ -55,6 +55,7 @@ public class NightscoutFollow {
     private static Retrofit retrofit;
     private static Nightscout service;
 
+// TODO: avaid recursive additions of trements
 
     public interface Nightscout {
         @Headers({
@@ -66,6 +67,8 @@ public class NightscoutFollow {
 
         @GET("/api/v1/treatments")
         Call<ResponseBody> getTreatments(@Header("api-secret") String secret);
+//        TODO: fetch from timestamp of last downloaded treatment
+//        Call<ResponseBody> getTreatments(@Header("api-secret") String secret, @Query("count") int count, @Query("rr") String rr);
     }
 
     private static Nightscout getService() {
@@ -101,7 +104,7 @@ public class NightscoutFollow {
         session.treatmentsCallback = new NightscoutCallback<ResponseBody>("NS treatments download", session, () -> {
             // process data
             try {
-                NightscoutTreatments.processTreatmentResponse(session.treatments.string());
+                NightscoutTreatments.processTreatmentResponse(session.treatments.string(), true);
                 NightscoutFollowService.updateTreatmentDownloaded();
             } catch (Exception e) {
                 msg("Treatments: " + e);
