@@ -12,7 +12,7 @@
             android:key="dex_collection_method"
             android:summary="@string/how_receive_data"
             android:title="@string/hardware_data_source" />
-        <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+        <PreferenceScreen
             android:icon="@drawable/ic_nfc_grey600_48dp"
             android:key="xdrip_plus_nfc_settings"
             android:summary="@string/nfc_options"
@@ -133,17 +133,14 @@
             android:title="Share Username" />
         <EditTextPreference
             android:defaultValue=""
-            android:inputType="textNoSuggestions|textVisiblePassword"
+            android:inputType="textNoSuggestions|textPassword"
             android:key="shfollow_pass"
             android:maxLines="1"
             android:singleLine="true"
             android:summary="Login password for Dex Share Following"
             android:title="Share Password" />
 
-
-
-
-        <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+        <PreferenceScreen
             android:key="xdrip_plus_g5_extra_settings"
             android:summary="@string/advanced_g5_settings"
             android:title="@string/g5_debug_settings">
@@ -291,7 +288,7 @@
                 android:key="g5-battery-warning-level"
                 android:title="@string/title_g5_battery_warning_level"
                 android:defaultValue="300"
-                android:numeric="integer"
+                android:inputType="number"
                 />
             </PreferenceCategory>
 
