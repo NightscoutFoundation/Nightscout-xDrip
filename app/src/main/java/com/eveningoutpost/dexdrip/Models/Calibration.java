@@ -18,12 +18,14 @@ import com.eveningoutpost.dexdrip.ImportedLibraries.dexcom.records.CalRecord;
 import com.eveningoutpost.dexdrip.ImportedLibraries.dexcom.records.CalSubrecord;
 import com.eveningoutpost.dexdrip.Models.UserError.Log;
 import com.eveningoutpost.dexdrip.Services.Ob1G5CollectionService;
+import com.eveningoutpost.dexdrip.Services.SyncService;
 import com.eveningoutpost.dexdrip.UtilityModels.BgSendQueue;
 import com.eveningoutpost.dexdrip.UtilityModels.CalibrationSendQueue;
 import com.eveningoutpost.dexdrip.UtilityModels.CollectionServiceStarter;
 import com.eveningoutpost.dexdrip.UtilityModels.Constants;
 import com.eveningoutpost.dexdrip.UtilityModels.Notifications;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
+import com.eveningoutpost.dexdrip.UtilityModels.UploaderQueue;
 import com.eveningoutpost.dexdrip.calibrations.CalibrationAbstract;
 import com.eveningoutpost.dexdrip.calibrations.NativeCalibrationPipe;
 import com.eveningoutpost.dexdrip.calibrations.PluggableCalibration;
@@ -906,6 +908,11 @@ public class Calibration extends Model {
             try {
                 final Calibration latestCalibration = Calibration.lastValid();
                 int i = 0;
+                boolean syncAdjustedReadings = false;
+                boolean uploadAdjusted = Pref.getBoolean("upload_modified_bgreadings", false);
+                if (uploadAdjusted) {
+                    Log.v(TAG, "Adjusted readings will be uploaded to NS");
+                }
                 for (BgReading bgReading : bgReadings) {
                     if (bgReading.calibration != null) {
                         final double oldYValue = bgReading.calculated_value;
@@ -917,12 +924,21 @@ public class Calibration extends Model {
                         }
                         bgReading.calculated_value = new_calculated_value;
 
+                        Log.v(TAG, String.format("Previous value: %.2f, New value: %.2f", oldYValue, bgReading.calculated_value));
+
                         bgReading.save();
                         BgReading.pushBgReadingSyncToWatch(bgReading, false);
+                        if (uploadAdjusted) {
+                            UploaderQueue.newEntry("update", bgReading);
+                            syncAdjustedReadings = true;
+                        }
                         i += 1;
                     } else {
                         Log.d(TAG, "History Rewrite: Ignoring BgReading without calibration from: " + JoH.dateTimeText(bgReading.timestamp));
                     }
+                }
+                if (syncAdjustedReadings) {
+                    SyncService.startSyncService(3000); // sync in 3 seconds
                 }
             } catch (NullPointerException e) {
                 Log.wtf(TAG, "Null pointer in AdjustRecentReadings >=3: " + e);
