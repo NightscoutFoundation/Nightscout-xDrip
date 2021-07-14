@@ -5,6 +5,10 @@ import android.os.AsyncTask;
 import android.os.PowerManager;
 import android.util.Base64;
 
+import com.squareup.okhttp.OkHttpClient;
+import com.squareup.okhttp.Request;
+import com.squareup.okhttp.Response;
+
 import com.eveningoutpost.dexdrip.GcmActivity;
 import com.eveningoutpost.dexdrip.Home;
 import com.eveningoutpost.dexdrip.MapsActivity;
@@ -44,7 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-
 // Important note, this class is based on the fact that android will always run it one thread, which means it does not
 // need synchronization
 
@@ -58,7 +61,8 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
     private static final Gson gson = JoH.defaultGsonInstance();
 
     private final static long DEXCOM_PERIOD = 300000;
-    
+    private static OkHttpClient httpClient;
+
     // This variables are for fake function only
     static int i = 0;
     static int added = 5;
@@ -140,7 +144,7 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
         Log.i(TAG, "Reading From " + hostAndIp);
         String[] hosts = hostAndIp.split(":");
         if (hosts.length != 2) {
-          //  System.out.println("Invalid hostAndIp " + hostAndIp);
+            //  System.out.println("Invalid hostAndIp " + hostAndIp);
             Log.e(TAG, "Invalid hostAndIp " + hostAndIp);
 
             return null;
@@ -150,16 +154,15 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
         } catch (NumberFormatException nfe) {
             System.out.println("Invalid port " + hosts[1]);
             Log.e(TAG, "Invalid hostAndIp " + hostAndIp, nfe);
-            statusLog(hosts[0], JoH.hourMinuteString() + " Invalid Port: " + hostAndIp);
+            statusLog(hostAndIp, JoH.hourMinuteString() + " Invalid Port: " + hostAndIp);
             return null;
 
         }
         if (port < 10 || port > 65535) {
             System.out.println("Invalid port " + hosts[1]);
             Log.e(TAG, "Invalid hostAndIp " + hostAndIp);
-            statusLog(hosts[0], JoH.hourMinuteString() + " Invalid Host/Port: " + hostAndIp);
+            statusLog(hostAndIp, JoH.hourMinuteString() + " Invalid Host/Port: " + hostAndIp);
             return null;
-
         }
         System.out.println("Reading from " + hosts[0] + " " + port);
         final List<LibreWifiData> ret;
@@ -169,17 +172,12 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             // We had some error, need to move on...
             System.out.println("read from host failed cought expation" + hostAndIp);
             Log.e(TAG, "read from host failed " + hostAndIp, e);
-
             return null;
-
         }
         return ret;
     }
 
-    
-    
     private static List<LibreWifiData> ReadFromMongo(String dbury, int numberOfRecords) {
-       
         Log.i(TAG, "Reading From " + dbury);
         // format is dburi/db/collection. We need to find the collection and strip it from the dburi.
         int indexOfSlash = dbury.lastIndexOf('/');
@@ -188,7 +186,6 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             Log.e(TAG, "Error bad dburi. Did not find a collection name starting with / " + dbury);
             // in order for the user to understand that there is a problem, we return null
             return null;
-
         }
         final String collection = dbury.substring(indexOfSlash + 1);
         dbury = dbury.substring(0, indexOfSlash);
@@ -208,13 +205,75 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             long newest_timestamp = 0;
             for (LibreWifiData r : rd) {
                 if (newest_timestamp < r.getCaptureDateTime()) {
-                    statusLog(dbury, JoH.hourMinuteString() + " OK data from:", r.getCaptureDateTime());
+                    statusLog(dbury, JoH.hourMinuteString() + " OK data from: ", r.getCaptureDateTime());
                     newest_timestamp = r.getCaptureDateTime();
                 }
             }
         }
         return rd;
-        
+    }
+
+    // read from http source like cloud hosted parakeet receiver.cgi / json.get
+    private static List<LibreWifiData> readHttpJson(String url, int numberOfRecords) {
+        long newest_timestamp = 0;
+        final long time_start = JoH.tsl();
+        final List<LibreWifiData> trd_list = new LinkedList<LibreWifiData>();
+        try {
+            if (httpClient == null) {
+                httpClient = new OkHttpClient();
+                // suitable for GPRS
+                httpClient.setConnectTimeout(30, TimeUnit.SECONDS);
+                httpClient.setReadTimeout(60, TimeUnit.SECONDS);
+                httpClient.setWriteTimeout(20, TimeUnit.SECONDS);
+            }
+
+            // simple HTTP GET request
+            // n=numberOfRecords for backfilling
+            // expecting json reply like the standard json server in dexterity / python pi usb / parakeet
+            final Request request = new Request.Builder()
+                    // Mozilla header facilitates compression
+                    .header("User-Agent", "Mozilla/5.0")
+                    .header("Connection", "close")
+                    .url(url + "/libre/" + numberOfRecords)
+                    .build();
+
+            final Response response = httpClient.newCall(request).execute();
+            if (!response.isSuccessful()) {
+                Log.e(TAG, "Error reading from " + url + " " + response.message());
+                return trd_list;
+            }
+            String res = response.body().string();
+            Log.d(TAG, "Data read from " + url + " " + res);
+
+            final LibreWifiData[] libre_wifi_data_array = gson.fromJson(res, LibreWifiData[].class);
+            Log.e(TAG, "LibreWifiHeader = " + libre_wifi_data_array);
+
+            for (LibreWifiData libre_wifi_data : libre_wifi_data_array) {
+                libre_wifi_data.RelativeTime = JoH.tsl() - libre_wifi_data.CaptureDateTime;
+
+                if (newest_timestamp < libre_wifi_data.CaptureDateTime) {
+                    statusLog(url, JoH.hourMinuteString() + " OK data from:", libre_wifi_data.CaptureDateTime);
+                    newest_timestamp = libre_wifi_data.CaptureDateTime;
+                }
+
+                trd_list.add(0, libre_wifi_data);
+                //  System.out.println( trd.toTableString());
+                if (trd_list.size() == numberOfRecords) {
+                    // We have the data we want, let's get out
+                    break;
+                }
+            }
+            return trd_list;
+        } catch (SocketTimeoutException s) {
+            Log.e(TAG, "Socket timed out! " + url + " : " + s.toString() + " after: " + JoH.msSince(time_start));
+            statusLog(url, JoH.hourMinuteString() + " " + s.toString());
+        } catch (IOException e) {
+            Log.e(TAG, "caught IOException! " + url + " : " + " : " + e.toString());
+            statusLog(url, JoH.hourMinuteString() + " " + e.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "Got exception " + url + " " + e.toString());
+        }
+        return trd_list;
     }
 
     // format of string is ip1:port1,ip2:port2;
@@ -232,10 +291,12 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             List<LibreWifiData> tmpList;
             if (host.startsWith("mongodb://")) {
                 tmpList = ReadFromMongo(host, numberOfRecords);
-            }  else if ((host.startsWith("fake://")
+            } else if ((host.startsWith("fake://")
                     && (Home.get_engineering_mode())
                     && (DexCollectionType.getDexCollectionType() == DexCollectionType.Mock))) {
                 tmpList = readFake();
+            } else if (host.startsWith("https://")) {
+                tmpList = readHttpJson(host, numberOfRecords);
             } else {
                 tmpList = ReadHost(host, numberOfRecords);
             }
@@ -248,7 +309,6 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             //System.out.println("Could not read anything from " + hostsNames);
             Log.e(TAG, "Could not read anything from " + hostsNames);
             return null;
-
         }
         final List<LibreWifiData> mergedData = MergeLists(allTransmitterRawData);
 
@@ -258,22 +318,20 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
 
         //      System.out.println("Final Results========================================================================");
         //       for (int i= 0; i < trd_array.length; i++) {
-        //           System.out.println( trd_array[i].toTableString());
+        //           System.out.println( trd_array[i].toString());
         //      }
         return trd_array;
-
     }
 
     public static List<LibreWifiData> ReadV2(String hostName, int port, int numberOfRecords) {
-        
         final List<LibreWifiData> trd_list = new LinkedList<LibreWifiData>();
         Log.i(TAG, "Read called: " + hostName + " port: " + port);
-        
+
         final boolean skip_lan = Pref.getBooleanDefaultFalse("skip_lan_uploads_when_no_lan");
 
         if (skip_lan && (hostName.endsWith(".local")) && !JoH.isLANConnected()) {
             Log.d(TAG, "Skipping due to no lan: " + hostName);
-            statusLog(hostName, "Skipping, no LAN");
+            statusLog(hostName + ":" + port, "Skipping, no LAN");
             return trd_list; // blank
         }
 
@@ -282,32 +340,20 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
         long newest_timestamp = 0;
 
         try {
-
-
-            // An example of using gson.
             final ComunicationHeaderV2 ch = new ComunicationHeaderV2(numberOfRecords);
-            //ch.version = 2;
-            //ch.numberOfRecords = numberOfRecords;
-            // String flat = gson.toJson(ch);
-            //ComunicationHeader ch2 = gson.fromJson(flat, ComunicationHeader.class);
-            //System.out.println("Results code" + flat + ch2.version);
-
             // Real client code
             final InetSocketAddress ServerAddress = new InetSocketAddress(Mdns.genericResolver(hostName), port);
             currentAddress = ServerAddress.getAddress().getHostAddress();
             if (skip_lan && currentAddress.startsWith("192.168.") && !JoH.isLANConnected()) {
                 Log.d(TAG, "Skipping due to no lan: " + hostName);
-                statusLog(hostName, "Skipping, no LAN");
+                statusLog(hostName + ":" + port, "Skipping, no LAN");
                 return trd_list; // blank
             }
 
             final Socket MySocket = new Socket();
             MySocket.connect(ServerAddress, 10000);
 
-            //System.out.println("After the new socket \n");
             MySocket.setSoTimeout(3000);
-
-            //System.out.println("client connected... " );
 
             final PrintWriter out = new PrintWriter(MySocket.getOutputStream(), true);
             final BufferedReader in = new BufferedReader(new InputStreamReader(MySocket.getInputStream()));
@@ -326,21 +372,21 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
                     break;
                 }
 
-                Log.e(TAG,  "data size " +data.length() + " data = "+ data);
-                full_data += data; 
+                Log.e(TAG, "data size " + data.length() + " data = " + data);
+                full_data += data;
             }
-            
+
             MySocket.close();
-            
+
             final LibreWifiHeader libre_Wifi_header = gson.fromJson(full_data, LibreWifiHeader.class);
             Log.e(TAG, "LibreWifiHeader = " + libre_Wifi_header);
-            
+
             for (LibreWifiData libre_wifi_data : libre_Wifi_header.libre_wifi_data) {
                 libre_wifi_data.CaptureDateTime = System.currentTimeMillis() - libre_wifi_data.RelativeTime;
                 //MapsActivity.newMapLocation(trd.GeoLocation, trd.CaptureDateTime);
 
                 if (newest_timestamp < libre_wifi_data.CaptureDateTime) {
-                    statusLog(hostName, JoH.hourMinuteString() + " OK data from:", libre_wifi_data.CaptureDateTime);
+                    statusLog(hostName + ":" + port, JoH.hourMinuteString() + " OK data from:", libre_wifi_data.CaptureDateTime);
                     newest_timestamp = libre_wifi_data.CaptureDateTime;
                 }
 
@@ -354,23 +400,21 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             return trd_list;
         } catch (SocketTimeoutException s) {
             Log.e(TAG, "Socket timed out! " + hostName + " : " + currentAddress + " : " + s.toString() + " after: " + JoH.msSince(time_start));
-            statusLog(hostName, JoH.hourMinuteString() + " " + s.toString());
+            statusLog(hostName + ":" + port, JoH.hourMinuteString() + " " + s.toString());
         } catch (IOException e) {
             Log.e(TAG, "caught IOException! " + hostName + " : " + currentAddress + " : " + " : " + e.toString());
-            statusLog(hostName, JoH.hourMinuteString() + " " + e.toString());
+            statusLog(hostName + ":" + port, JoH.hourMinuteString() + " " + e.toString());
         } catch (IllegalArgumentException e) {
             Log.e(TAG, "Argument error on: " + hostName + " " + e.toString());
         } catch (NullPointerException e) {
             Log.e(TAG, "Got null pointer exception " + hostName + " " + e.toString());
         }
-        
+
         return trd_list;
     }
 
     static Long timeForNextRead() {
-
         LibreBlock libreBlock = LibreBlock.getLatestForTrend(0L, JoH.tsl() + 5 * 60000); // Allow some packets from the future.
-        
         if (libreBlock == null) {
             // We did not receive a packet, well someone hopefully is looking at data, return relatively fast
             Log.e(TAG, "libreBlock == null returning 60000");
@@ -413,7 +457,7 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
             }
         } finally {
             JoH.releaseWakeLock(wl);
-           // Log.d(TAG, "wakelock released " + lockCounter);
+            // Log.d(TAG, "wakelock released " + lockCounter);
         }
         return null;
     }
@@ -422,7 +466,7 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
         // Start very simply by getting only one object and using it.
         Log.e(TAG, "readData called");
         Long LastReportedTime = 0L;
-        
+
         // TODO change that to work based on readings as well ???
         LibreBlock libreBlock = LibreBlock.getLatestForTrend(0L, JoH.tsl() + 5 * 60000); // Allow some packets from the future.
         if (libreBlock != null) {
@@ -456,13 +500,13 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
         int packetsToRead = 1;
         Log.d(TAG, "reading " + packetsToRead + " packets");
         LibreWifiData[] LibreWifiDataArr = Read(recieversIpAddresses, packetsToRead);
-        
+
         Log.d(TAG, "After reading ..." + LibreWifiDataArr);
 
         if (LibreWifiDataArr == null || LibreWifiDataArr.length == 0) {
             return;
         }
-        Log.d(TAG, "After verification ..." + LibreWifiDataArr);
+        Log.d(TAG, "After verification ... size = " + LibreWifiDataArr.length);
         // Last in the array is the most updated reading we have.
         for (LibreWifiData LastReading : LibreWifiDataArr) {
             // Last in the array is the most updated reading we have.
@@ -470,13 +514,13 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
 
             //if (LastReading.CaptureDateTime > LastReportedReading + 5000) {
             // Make sure we do not report packets from the far future...
-            
-            Log.d(TAG, "checking packet from " +  JoH.dateTimeText(LastReading.CaptureDateTime ));
-            
+
+            Log.d(TAG, "checking packet from " + JoH.dateTimeText(LastReading.CaptureDateTime));
+
             if ((LastReading.CaptureDateTime > LastReportedTime + 4 * 60000) &&
                     LastReading.CaptureDateTime < new Date().getTime() + 120000) {
                 // We have a real new reading...
-                Log.d(TAG, "will call with packet from " +  JoH.dateTimeText(LastReading.CaptureDateTime ));
+                Log.d(TAG, "will call with packet from " + JoH.dateTimeText(LastReading.CaptureDateTime));
 
                 byte data[] = Base64.decode(LastReading.BlockBytes, Base64.DEFAULT);
 
@@ -485,35 +529,32 @@ public class LibreWifiReader extends AsyncTask<String, Void, Void> {
                     patchUid = Base64.decode(LastReading.patchUid, Base64.DEFAULT);
                 }
                 byte patchInfo[] = null;
-                if (LastReading.patchInfo != null && (!LastReading.patchInfo.isEmpty())) {        
+                if (LastReading.patchInfo != null && (!LastReading.patchInfo.isEmpty())) {
                     patchInfo = Base64.decode(LastReading.patchInfo, Base64.DEFAULT);
                 }
                 boolean checksum_ok = NFCReaderX.HandleGoodReading(LastReading.SensorId, data, LastReading.CaptureDateTime, false, patchUid, patchInfo);
                 if (checksum_ok) {
-                    Log.d(TAG, "checksum ok updating LastReportedTime to " +  JoH.dateTimeText(LastReading.CaptureDateTime ));
+                    Log.d(TAG, "checksum ok updating LastReportedTime to " + JoH.dateTimeText(LastReading.CaptureDateTime));
                     // TODO use battery, and other interesting data.
                     LastReportedTime = LastReading.CaptureDateTime;
-                    
+
                     PersistentStore.setString("Tomatobattery", Integer.toString(LastReading.TomatoBatteryLife));
                     Pref.setInt("bridge_battery", LastReading.TomatoBatteryLife);
                     PersistentStore.setString("TomatoHArdware", LastReading.HwVersion);
-                    PersistentStore.setString("TomatoFirmware",LastReading.FwVersion);
+                    PersistentStore.setString("TomatoFirmware", LastReading.FwVersion);
                     Log.i(TAG, "LastReading.SensorId " + LastReading.SensorId);
                     PersistentStore.setString("LibreSN", LastReading.SensorId);
-                    
+
                     if (SensorSanity.checkLibreSensorChangeIfEnabled(LastReading.SensorId)) {
                         Log.e(TAG, "Problem with Libre Serial Number - not processing");
                         return;
                     }
-                    
-                    
                 } else {
                     Log.e(TAG, "Recieved a pacjet with bad checksum");
                 }
             }
         }
     }
-    
 
     // data for MegaStatus
     static List<StatusItem> megaStatus() {
